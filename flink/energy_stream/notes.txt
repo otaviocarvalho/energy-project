@@ -1,0 +1,15 @@
+scala> LineStr
+res1: java.lang.String = 1,1377986401,68.451,0,11,0,0
+
+cala> val Line = """([0-9]*),([0-9]*),([0-9]*.[0-9]*),([0-9]*),([0-9]*),([0-9]*),([0-9]*)""".r
+Line: scala.util.matching.Regex = ([0-9]*),([0-9]*),([0-9]*.[0-9]*),([0-9]*),([0-9]*),([0-9]*),([0-9]*)
+
+scala> val Line(id, timestamp, value, property, plug_id, household_id, house_id) = LineStr
+id: String = 1
+timestamp: String = 1377986401
+value: String = 68.451
+property: String = 0
+plug_id: String = 11
+household_id: String = 0
+house_id: String = 0
+
