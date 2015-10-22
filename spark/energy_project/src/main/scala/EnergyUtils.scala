@@ -6,11 +6,16 @@ case class Measurement(id: Int,
                        property: Int,
                        plug_id: Int,
                        household_id: Int,
-                       house_id: Int
-                       //hhp_id: String
-                        )
+                       house_id: Int,
+                       hhp_id: String
+                      )
 
 case class PlugMeasurement(house_id: Int,
                            household_id: Int,
                            plug_id: Int,
-                           value: Double)
+                           value: Double,
+                           hhp_id: String)
+
+case class HouseMeasurement(house_id: Int,
+                            value: Double,
+                            hhp_id: String)
