@@ -11,12 +11,43 @@ import org.apache.spark.rdd.RDD
 import java.lang.Math.copySign
 import com.redis._
 
+import scala.reflect.io.File
+
 object EnergyProcessor {
 
+		// Get a rolling average over a DStream
+    def avgFunc(measurements: Seq[Double], state: Option[(Double,Int)]): Option[(Double,Int)] = {
+      // Sum received measurements with previous ones and get average
+      val current = state.getOrElse((0.0,0)) // State = (Aggregate of measurement values, Aggregate counter of values)
+      val counter = current._2 + measurements.length
+      val avg = (current._1 + measurements.sum) / counter
+      Some(avg, counter)
+    }
+
+    // Get energy prediction over a DStream
+    def loadPredictionFunc(measurements: Seq[Double], state: Option[(Double,Int,Double,Double)]): Option[(Double,Int,Double,Double)] = {
+      val current = state.getOrElse((0.0, 0, 0.0, 0.0)) // State = (Aggregate of measurement values, Aggregate counter of values, Median)
+      val counter = current._2 + measurements.length
+
+      val avg = (current._1 + measurements.sum) / counter
+
+      val median = (current._3 + copySign(avg*0.01, current._1 - current._3))
+
+      val loadPrediction = (avg + median) / 2
+
+      Some(avg, counter, median, loadPrediction)
+    }
+
+    def testFunc(measurements: Seq[HouseMeasurement], state: Option[(String,Double)]): Option[(String,Double)] = {
+      val values = measurements.map(h => h.value)
+      val sum = values.sum
+      Some(measurements.last.hhp_id, sum)
+    }
 
 		def main(args: Array[String]) {
 				val conf = new SparkConf().setMaster("local[*]").setAppName("KafkaReceiver")
 				val ssc = new StreamingContext(conf, Seconds(10))
+				val output_path = "/home/omcarvalho/tcc/project/spark/energy_project/output/"
 				ssc.checkpoint("/tmp/energy_project/")
 
 				// Read Kafka data stream
@@ -39,10 +70,10 @@ object EnergyProcessor {
 				//measurements.print()
 
 				// Filter valid load measurements
-				val validMeasurements = measurements.filter { m => m.property == 1 && m.value > 0.0 }
+				val validMeasurements = measurements.filter { m => m.property == 1 && m.value > 0.0 }.window(Seconds(30))
 
 				// Process stream load measurements into PlugMeasurements
-				val plugMeasurements = measurements.map { m =>
+				val plugMeasurements = validMeasurements.map { m =>
           PlugMeasurement(m.house_id,
 						m.household_id,
 						m.plug_id,
@@ -60,48 +91,42 @@ object EnergyProcessor {
           )
 				}
 
-        def avgFunc(measurements: Seq[Double], state: Option[(Double,Int)]): Option[(Double,Int)] = {
-					// Sum received measurements with previous ones and get average
-					val current = state.getOrElse((0.0,0)) // State = (Aggregate of measurement values, Aggregate counter of values)
-					val counter = current._2 + measurements.length
-					val avg = (current._1 + measurements.sum) / counter
-					Some(avg, counter)
-        }
-
-        def loadPredictionFunc(measurements: Seq[Double], state: Option[(Double,Int,Double,Double)]): Option[(Double,Int,Double,Double)] = {
-					val current = state.getOrElse((0.0, 0, 0.0, 0.0)) // State = (Aggregate of measurement values, Aggregate counter of values, Median)
-					val counter = current._2 + measurements.length
-
-					val avg = (current._1 + measurements.sum) / counter
-
-					val median = (current._3 + copySign(avg*0.01, current._1 - current._3))
-
-					val loadPrediction = (avg + median) / 2
-
-					Some(avg, counter, median, loadPrediction)
-        }
-
-//        def testFunc(measurements: Seq[HouseMeasurement], state: Option[(String,Double)]): Option[(String,Double)] = {
-//					val values = measurements.map(h => h.value)
-//					val sum = values.sum
-//					Some(measurements.last.hhp_id, sum)
-//				}
-
         // Average per plug and window
 				val avgPlugs = plugMeasurements.map(p => (p.hhp_id, p.value)).updateStateByKey(avgFunc)
-				avgPlugs.print()
+				//avgPlugs.print()
 
 				// Average per house and window
 				val avgHouses = houseMeasurements.map(p => (p.house_id, p.value)).updateStateByKey(avgFunc)
-        avgHouses.print()
+        //avgHouses.print()
 
         // Prediction per plug and window
 				val predictionPlugs = plugMeasurements.map(p => (p.hhp_id, p.value)).updateStateByKey(loadPredictionFunc)
-				predictionPlugs.print()
+				//predictionPlugs.print()
 
 				// Prediction per house and window
-				val predictionHouses = houseMeasurements.map(p => (p.house_id, p.value)).updateStateByKey(loadPredictionFunc).window(Seconds(10))
-        predictionHouses.print()
+				val predictionHouses = houseMeasurements.map(p => (p.house_id, p.value)).updateStateByKey(loadPredictionFunc)
+        //predictionHouses.print()
+
+				// Print house prediction output to a set of files
+        predictionHouses.repartition(1).foreachRDD { rdd =>
+					// Save using hadoop format
+					//rdd.saveAsTextFile(output_path+"predict_houses_"+rdd.id)
+
+					// Save using a simple set of files
+					var count = 0
+					val id = rdd.id
+					if (!rdd.isEmpty()) {
+						rdd.foreachPartition { partition =>
+							val string = partition.map(house => house.copy().toString()).reduce { (h1, h2) =>
+								(h1 + "\n" + h2)
+							}
+							println(string)
+							File(output_path + "prediction_houses_" + id + "_" + count).writeAll(string)
+							count += 1
+						}
+					}
+
+				}
 
 				// Insert into Redis
 			 	plugMeasurements.foreachRDD { rdd =>
