@@ -13,9 +13,13 @@ case class Measurement(id: Int,
 case class PlugMeasurement(house_id: Int,
                            household_id: Int,
                            plug_id: Int,
+                           timestamp: Int,
                            value: Double,
+                           median: Double,
                            hhp_id: String)
 
 case class HouseMeasurement(house_id: Int,
+                            timestamp: Int,
                             value: Double,
+                            median: Double,
                             hhp_id: String)
