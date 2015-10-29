@@ -1,5 +1,6 @@
 #!/bin/bash
 source ~/.bashrc
+$PROJECT_HOME="/home/omcarvalho/tcc/project/spark/energy_project/"
 
 # zookeeper
 nohup $ZOOKEEPER_HOME/bin/zkServer.sh start $ZOOKEEPER_HOME/conf/zoo.cfg &
@@ -7,7 +8,7 @@ sleep 1
 
 # kafka
 rm -rf /tmp/kafka-logs/streaming-topic*
-$ZOOKEEPER_HOME/bin/zkCli.sh rmr /brokers/streaming-topic
+echo "rmr /brokers/streaming-topic" | $ZOOKEEPER_HOME/bin/zkCli.sh
 sleep 1
 nohup $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server.properties &
 sleep 1
