@@ -32,15 +32,8 @@ object EnergyInputProducer {
     println("id,timestamp,property,plug_id,household_id,house_id")
     // Send measures to Kafka
     for (line <- bufferedSource.getLines) {
-//      (1 to messagesPerSec.toInt).foreach { messageNum =>
-//        val str = (1 to wordsPerMessage.toInt).map(x => scala.util.Random.nextInt(10).toString)
-//        .mkString(" ")
-//        val message = new ProducerRecord[String, String](topic, null, str)
-//        producer.send(message)
-//      }
-
       // Convert string to measurement
-      val item = line.split(",").map(_.trim)
+//      val item = line.split(",").map(_.trim)
 //        val measure = Measurement(item(0).toInt,
 //        item(1).toInt,
 //        item(2).toFloat,
@@ -56,7 +49,6 @@ object EnergyInputProducer {
       println(line)
       producer.send(message)
 
-      //Thread.sleep(1000)
       Thread.sleep(200)
     }
 

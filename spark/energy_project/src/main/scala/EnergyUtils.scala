@@ -7,8 +7,7 @@ case class Measurement(id: Int,
                        plug_id: Int,
                        household_id: Int,
                        house_id: Int,
-                       hhp_id: String
-                      )
+                       hhp_id: String)
 
 case class PlugMeasurement(house_id: Int,
                            household_id: Int,
@@ -23,3 +22,13 @@ case class HouseMeasurement(house_id: Int,
                             value: Double,
                             median: Double,
                             hhp_id: String)
+
+case class HousePrediction(house_id: Int,
+                           timestamp: Int,
+                           predicted_load: Double)
+
+case class PlugPrediction(house_id: Int,
+                          household_id: Int,
+                          plug_id: Int,
+                          timestamp: Int,
+                          predicted_load: Double)
