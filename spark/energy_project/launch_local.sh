@@ -1,6 +1,6 @@
 #!/bin/bash
 source ~/.bashrc
-$PROJECT_HOME="/home/omcarvalho/tcc/project/spark/energy_project/"
+PROJECT_HOME="/home/omcarvalho/tcc/project/spark/energy_project/"
 
 # zookeeper
 nohup $ZOOKEEPER_HOME/bin/zkServer.sh start $ZOOKEEPER_HOME/conf/zoo.cfg &
