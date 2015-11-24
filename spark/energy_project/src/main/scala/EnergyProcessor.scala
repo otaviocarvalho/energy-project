@@ -88,7 +88,7 @@ object EnergyProcessor {
   }
 
   def main(args: Array[String]) {
-    val conf = new SparkConf().setMaster("local[*]").setAppName("KafkaReceiver")
+    val conf = new SparkConf().setAppName("EnergyProcessor")
     val ssc = new StreamingContext(conf, Seconds(10))
     val output_path = "/home/omcarvalho/tcc/project/spark/energy_project/output/"
     ssc.checkpoint("/tmp/energy_project/")
@@ -453,17 +453,17 @@ object EnergyProcessor {
         totalCount += count
     })
 
-    ssc.start()
-    Thread.sleep(20 * 1000)
-    ssc.stop()
-    if (totalCount > 0) {
-        println("PASSED")
-    } else {
-        println("FAILED")
-    }
+//    ssc.start()
+//    Thread.sleep(20 * 1000)
+//    ssc.stop()
+//    if (totalCount > 0) {
+//        println("PASSED")
+//    } else {
+//        println("FAILED")
+//    }
 
-    /*ssc.start()*/
-    /*ssc.awaitTermination()*/
+    ssc.start()
+    ssc.awaitTermination()
   }
 }
 
