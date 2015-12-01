@@ -1,6 +1,7 @@
 package energy_stream
 
 import org.apache.spark.SparkConf
+import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming._
 import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.dstream.DStream
@@ -94,12 +95,19 @@ object EnergyProcessor {
     ssc.checkpoint("/tmp/energy_project/")
 
     // Read Kafka data stream
-    val kafkaStream = KafkaUtils.createStream(ssc, "localhost:2181","group", Map("streaming-topic" -> 1))
-    //kafkaStream.print()
+    val readParallellism = 4
+    val kafkaStream = (1 to readParallellism).map {_ =>
+      KafkaUtils.createStream(ssc, "localhost:2181","group", Map("streaming-topic" -> 1), StorageLevel.MEMORY_ONLY_SER).map(_._2)
+    }
+    val unifiedKafkaUnionStream = ssc.union(kafkaStream)
+    val sparkProcessingParallelism = 1
+    //val sparkProcessingParallelism = 16
+    val unifiedKafkaStream = unifiedKafkaUnionStream.repartition(sparkProcessingParallelism)
 
     // Process stream into Measurements
-    val measurements = kafkaStream.map { line =>
-      val item = line._2.split(",")
+    val measurements = unifiedKafkaStream.map { line =>
+      //val item = line._2.split(",")
+      val item = line.split(",")
       Measurement(item(0).toInt,
         item(1).toInt,
         item(2).toFloat,
@@ -443,7 +451,7 @@ object EnergyProcessor {
 
     // Print out the count of events received from this server in each batch
     var totalCount = 0L
-    kafkaStream.foreachRDD((rdd: RDD[_], time: Time) => {
+    unifiedKafkaStream.foreachRDD((rdd: RDD[_], time: Time) => {
         val count = rdd.count()
         println("\n-------------------")
         println("Time: " + time)
