@@ -20,20 +20,7 @@ import scala.tools.cmd.gen.AnyVals
 object EnergyProcessor {
 	final val initialTimestamp = 1377986401
   final val fullDayTimestamp = 86400
-
-//  // Get energy prediction over a DStream
-//  def loadPredictionRollingMedianFunc(measurements: Seq[Double], state: Option[(Double,Int,Double,Double)]): Option[(Double,Int,Double,Double)] = {
-//    val current = state.getOrElse((0.0, 0, 0.0, 0.0)) // State = (Aggregate of measurement values, Aggregate counter of values, Median)
-//    val counter = current._2 + measurements.length
-//
-//    val avg = (current._1 + measurements.sum) / counter
-//
-//    val median = (current._3 + copySign(avg*0.01, current._1 - current._3))
-//
-//    val loadPrediction = (avg + median) / 2
-//
-//    Some(avg, counter, median, loadPrediction)
-//  }
+  final val timeFrameSizeFixed = 1
 
   // Get energy prediction over a DStream using previous calculated median
   def loadPredictionHouseStaticMedianFunc(measurements: Seq[HouseMeasurement], state: Option[(HousePrediction,Double,Int)]): Option[(HousePrediction,Double,Int)] = {
@@ -89,25 +76,28 @@ object EnergyProcessor {
   }
 
   def main(args: Array[String]) {
-    val conf = new SparkConf().setAppName("EnergyProcessor")
+    //val conf = new SparkConf().setAppName("EnergyProcessor")
+    val conf = new SparkConf().setMaster("local[*]").setAppName("KafkaReceiver")
     val ssc = new StreamingContext(conf, Seconds(10))
     val output_path = "/home/omcarvalho/tcc/project/spark/energy_project/output/"
     ssc.checkpoint("/tmp/energy_project/")
 
     // Read Kafka data stream
-    val readParallellism = 4
-    val kafkaStream = (1 to readParallellism).map {_ =>
-      KafkaUtils.createStream(ssc, "localhost:2181","group", Map("streaming-topic" -> 1), StorageLevel.MEMORY_ONLY_SER).map(_._2)
-    }
-    val unifiedKafkaUnionStream = ssc.union(kafkaStream)
-    val sparkProcessingParallelism = 1
-    //val sparkProcessingParallelism = 16
-    val unifiedKafkaStream = unifiedKafkaUnionStream.repartition(sparkProcessingParallelism)
+//    val readParallellism = 4
+//    val kafkaStream = (1 to readParallellism).map {_ =>
+//      KafkaUtils.createStream(ssc, "localhost:2181","group", Map("streaming-topic" -> 1), StorageLevel.MEMORY_ONLY_SER).map(_._2)
+//    }
+//    val unifiedKafkaUnionStream = ssc.union(kafkaStream)
+//    val sparkProcessingParallelism = 1
+//    //val sparkProcessingParallelism = 16
+//    val unifiedKafkaStream = unifiedKafkaUnionStream.repartition(sparkProcessingParallelism)
+
+    val unifiedKafkaStream = KafkaUtils.createStream(ssc, "localhost:2181","group", Map("streaming-topic" -> 1))
 
     // Process stream into Measurements
     val measurements = unifiedKafkaStream.map { line =>
-      //val item = line._2.split(",")
-      val item = line.split(",")
+      val item = line._2.split(",")
+      //val item = line.split(",")
       Measurement(item(0).toInt,
         item(1).toInt,
         item(2).toFloat,
@@ -155,7 +145,7 @@ object EnergyProcessor {
         partition.foreach { case houseMeasurement: HouseMeasurement =>
           clients.withClient { client =>
             // Defines an implicit schema ("house_measure":window:time_slice:house_id => value)
-            val key1min = "house_measure:1:" + getTimeSliceFunc(houseMeasurement.timestamp,1) + ":" +
+            val key1min = "house_measure:1:" + getTimeSliceFunc(houseMeasurement.timestamp,timeFrameSizeFixed) + ":" +
               houseMeasurement.house_id.toString
 
             // Insert into Redis tables
@@ -171,7 +161,7 @@ object EnergyProcessor {
         partition.foreach { case plugMeas: PlugMeasurement =>
           clients.withClient { client =>
             // Defines an implicit schema ("plug_measure":window:time_slice:house_id:household_id:plug_id => value)
-            val key1min = "plug_measure:1:" + getTimeSliceFunc(plugMeas.timestamp,1) + ":" +
+            val key1min = "plug_measure:1:" + getTimeSliceFunc(plugMeas.timestamp,timeFrameSizeFixed) + ":" +
               plugMeas.house_id.toString + ":" +
               plugMeas.household_id.toString + ":" +
               plugMeas.plug_id.toString
@@ -217,7 +207,7 @@ object EnergyProcessor {
         }
       }
     }
-    setAverageHouses(houseMeasurements, 1)
+    setAverageHouses(houseMeasurements, timeFrameSizeFixed)
 
     // Calculate plug averages based on measures, time frame and nearby time slices
     def setAveragePlugs(plugs: DStream[PlugMeasurement], timeFrameSize: Int) = {
@@ -259,7 +249,7 @@ object EnergyProcessor {
         }
       }
     }
-    setAveragePlugs(plugMeasurements, 1)
+    setAveragePlugs(plugMeasurements, timeFrameSizeFixed)
 
     //##################################################################
 
@@ -310,7 +300,7 @@ object EnergyProcessor {
 
       medianHouses
     }
-    val housesMedians = getMedianHouses(houseMeasurements, 1)
+    val housesMedians = getMedianHouses(houseMeasurements, timeFrameSizeFixed)
 
     // Set median per slice into data stream (also save on Redis)
     def setMedianHouses(houses: DStream[HouseMeasurement], medians: HashMap[String,Double], timeFrameSize: Int): DStream[HouseMeasurement] = {
@@ -320,7 +310,7 @@ object EnergyProcessor {
         house.copy(median = medians.get(key).getOrElse(house.value))
       }
     }
-    val houseMeasurementsWithMedian = setMedianHouses(houseMeasurements, housesMedians, 1)
+    val houseMeasurementsWithMedian = setMedianHouses(houseMeasurements, housesMedians, timeFrameSizeFixed)
 
 
     // Get median per plug per slice from ordered measurements (from Redis)
@@ -364,7 +354,7 @@ object EnergyProcessor {
 
       medianPlugs
     }
-    val plugMedians = getMedianPlugs(plugMeasurements, 1)
+    val plugMedians = getMedianPlugs(plugMeasurements, timeFrameSizeFixed)
 
     // Set median per slice into data stream (also save on Redis)
     def setMedianPlugs(plugs: DStream[PlugMeasurement], medians: HashMap[String,Double], timeFrameSize: Int): DStream[PlugMeasurement] = {
@@ -376,7 +366,7 @@ object EnergyProcessor {
         plug.copy(median = medians.get(key).getOrElse(plug.value))
       }
     }
-    val plugMeasurementsWithMedian = setMedianPlugs(plugMeasurements, plugMedians, 1)
+    val plugMeasurementsWithMedian = setMedianPlugs(plugMeasurements, plugMedians, timeFrameSizeFixed)
 
     //##################################################################
 
@@ -398,7 +388,7 @@ object EnergyProcessor {
             val (housePrediction, _, _) = prediction._2
 
             // Defines an implicit schema ("house_averages":window:time_slice:house_id => value)
-            val keyPred1Min = "house_prediction:1:" + (getTimeSliceFunc(housePrediction.timestamp,1).toInt + 1).toString +
+            val keyPred1Min = "house_prediction:1:" + (getTimeSliceFunc(housePrediction.timestamp,timeFrameSizeFixed).toInt + 1).toString +
                                                   ":" + house_id
 
             // Insert prediction into Redis tables
@@ -417,7 +407,7 @@ object EnergyProcessor {
             val (plugPrediction, _, _) = prediction._2
 
             // Defines an implicit schema ("plug_prediction":window:time_slice:house_id => value)
-            val keyPred1Min = "plug_prediction:1:" + (getTimeSliceFunc(plugPrediction.timestamp,1).toInt + 1).toString +
+            val keyPred1Min = "plug_prediction:1:" + (getTimeSliceFunc(plugPrediction.timestamp,timeFrameSizeFixed).toInt + 1).toString +
                                                 ":" + hhp_id
 
             // Insert prediction into Redis tables
@@ -461,17 +451,17 @@ object EnergyProcessor {
         totalCount += count
     })
 
-//    ssc.start()
-//    Thread.sleep(20 * 1000)
-//    ssc.stop()
-//    if (totalCount > 0) {
-//        println("PASSED")
-//    } else {
-//        println("FAILED")
-//    }
-
     ssc.start()
-    ssc.awaitTermination()
+    Thread.sleep(20 * 1000)
+    ssc.stop()
+    if (totalCount > 0) {
+        println("PASSED")
+    } else {
+        println("FAILED")
+    }
+
+//    ssc.start()
+//    ssc.awaitTermination()
   }
 }
 
